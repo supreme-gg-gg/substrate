@@ -19,7 +19,7 @@ import warnings
 
 from . import ateapi_pb2 as ateapi__pb2
 
-GRPC_GENERATED_VERSION = '1.81.1'
+GRPC_GENERATED_VERSION = '1.82.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -170,14 +170,14 @@ class ControlServicer:
         raise NotImplementedError('Method not implemented!')
 
     def ListWorkers(self, request, context):
-        """List all workers currently reflected in redis.
+        """List Workers.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ListActors(self, request, context):
-        """List all actors currently reflected in redis.
+        """List Actors.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -198,7 +198,7 @@ class ControlServicer:
         raise NotImplementedError('Method not implemented!')
 
     def ListAtespaces(self, request, context):
-        """List all Atespaces.
+        """List Atespaces.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

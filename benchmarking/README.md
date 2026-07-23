@@ -56,6 +56,19 @@ You can also configure things like the number of users, how quickly those users
 are spawned, the frequency with which requests are made and whether or not tracing is
 enabled.
 
+`StorageCrudUser` and `StorageReadUser` (`tests/ate_storage.py`) exercise the
+store backend directly (create/get/update/list/delete actor, and point reads,
+respectively) without the Resume/Suspend overhead `AteAPIUser` adds — this is
+the storage-focused workload from `docs/postgres-store-prototype.md`'s
+benchmark plan, used to compare the `ateredis` and `atepg` store backends
+(`ateapi --store-backend=redis|postgres`). See
+`benchmarking/automation/README.md` for the repeatable matrix,
+`run_local.py` (no CronJob needed), and the `summarize_results.py`
+comparison script; running it ad hoc from the web UI here doesn't reset or
+preload the dataset between runs — use
+`kubectl exec -n benchmarking deploy/locust -c locust-master -- python3 -m common.dbadmin --reset`
+for that.
+
 ### Viewing Traces
 You must have enabled otel tracing for your cluster to view traces.
 

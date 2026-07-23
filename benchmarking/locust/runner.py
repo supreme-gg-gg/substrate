@@ -38,6 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO, TextIO
 
+from common import dbadmin
 from common.boomer_config import build_config_json
 
 # Path inside the locust image to the boomer-glutton binary baked in by
@@ -75,6 +76,18 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Root destination (gs://bucket/path or local path)",
     )
+    p.add_argument(
+        "--reset-before",
+        action="store_true",
+        help="Truncate all store state (Debug/DebugClear) before running the test.",
+    )
+    p.add_argument(
+        "--preload",
+        type=int,
+        default=0,
+        help="Number of actors to create in the benchmark atespace before running "
+        "the test (e.g. for list-load-at-scale cases).",
+    )
     args, extra = p.parse_known_args()
     args.locust_extra = extra
     return args
@@ -103,6 +116,8 @@ def log_run_config(args: argparse.Namespace, dest_prefix: str, work_dir: Path, l
         f"  test_file:      {args.file}",
         f"  duration:       {args.duration}",
         f"  users:          {args.users}",
+        f"  reset_before:   {args.reset_before}",
+        f"  preload:        {args.preload}",
         f"  uses_boomer:    {needs_boomer(args.file)}",
         f"  dest_prefix:    {dest_prefix}",
         f"  work_dir:       {work_dir}",
@@ -259,8 +274,6 @@ def stats_to_jsonl(stats_csv: Path, jsonl_path: Path, timestamp: str, tag: str, 
         for row in reader:
             type_val = row.pop("Type", "") or ""
             name_val = row.pop("Name", "") or ""
-            if name_val == "Aggregated":
-                continue
             measurements = {}
             for k, v in row.items():
                 if k is None:
@@ -277,7 +290,10 @@ def stats_to_jsonl(stats_csv: Path, jsonl_path: Path, timestamp: str, tag: str, 
                 "timestamp": timestamp,
                 "tag": tag,
                 "test_name": test_name,
-                "metric": f"{type_val}_{name_val}",
+                # Locust leaves Type empty for its Aggregated row. Keep that
+                # row under a clean metric name: capacity tests need total
+                # achieved RPS, not only per-RPC throughput.
+                "metric": f"{type_val}_{name_val}" if type_val else name_val,
                 "measurements": measurements,
             }
             out.write(json.dumps(entry) + "\n")
@@ -302,6 +318,26 @@ def upload(src: Path, dest: str) -> None:
         dest_path = Path(dest)
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(src, dest_path)
+
+
+def prepare_dataset(args: argparse.Namespace, logs: TextIO) -> None:
+    """Reset and/or preload store state before the timed run, per --reset-before
+    / --preload. Raises on failure: a stale or partial dataset would silently
+    invalidate the run's results, so we fail loudly instead of running anyway."""
+    if not args.reset_before and args.preload <= 0:
+        return
+    channel, control_stub, debug_stub = dbadmin.build_stubs()
+    try:
+        if args.reset_before:
+            tee(logs, "Resetting store state (Debug/DebugClear)...")
+            dbadmin.reset_database(debug_stub)
+        if args.preload > 0:
+            tee(logs, f"Preloading {args.preload} actors...")
+            start = time.time()
+            dbadmin.preload_actors(control_stub, count=args.preload)
+            tee(logs, f"Preload complete in {time.time() - start:.1f}s")
+    finally:
+        channel.close()
 
 
 def main() -> None:
@@ -333,6 +369,7 @@ def main() -> None:
         traces.write("\t".join(TRACE_COLUMNS) + "\n")
         traces.flush()
         log_run_config(args, prefix, work_dir, logs)
+        prepare_dataset(args, logs)
         exit_code = run_test(args, csv_prefix, logs, traces)
 
         stats_generated = False

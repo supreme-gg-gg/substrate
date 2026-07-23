@@ -31,10 +31,12 @@ fi
 
 IMAGE="us-docker.pkg.dev/${PROJECT_ID}/gcr.io/ate-images/locust-test:latest"
 
-echo "Building Docker image: $IMAGE"
+echo "Building Docker image: $IMAGE (linux/amd64 for GKE)"
 # Build context is the monorepo root because the Dockerfile compiles the
 # boomer-glutton Go binary alongside the Python install (see Dockerfile).
-docker build -t "$IMAGE" -f benchmarking/locust/Dockerfile .
+# Force amd64: Mac arm64 hosts otherwise push an arm64-only image that GKE
+# nodes cannot pull ("no match for platform in manifest").
+docker build --platform linux/amd64 -t "$IMAGE" -f benchmarking/locust/Dockerfile .
 
 echo "Pushing Docker image..."
 docker push "$IMAGE"

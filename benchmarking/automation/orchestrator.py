@@ -272,7 +272,31 @@ def wait_for_job(name: str, timeout_seconds: int) -> str:
     return "timeout"
 
 
-def deploy_substrate() -> None:
+def switch_store_backend(store_backend: str = "redis", postgres_connection_string: str = "") -> None:
+    """Point an already-deployed ate-api-server at a different store backend,
+    without touching the rest of substrate (CRDs, atenet, atelet, valkey).
+    Used directly by run_local.py, which assumes substrate is already up;
+    deploy_substrate() below also calls this as one step of a full deploy."""
+    if store_backend == "postgres":
+        run(["hack/install-ate.sh", "--deploy-postgres"])
+
+    # ensure_apiserver_prerequisites (called by --deploy-ate-system) only
+    # creates the ate-api-server-envvars ConfigMap if it's missing, so a
+    # backend switch between tests would otherwise silently stick to
+    # whatever was created on the first run. Recreate it explicitly every
+    # time so --store-backend actually reflects this test's choice.
+    env = os.environ.copy()
+    env["ATE_API_STORE_BACKEND"] = store_backend
+    env["ATE_API_POSTGRES_CONNECTION_STRING"] = postgres_connection_string
+    run(["hack/install-ate.sh", "--create-api-server-env-vars"], env=env)
+
+    # Recreating the ConfigMap alone doesn't restart already-running pods.
+    run_no_check(["kubectl", "rollout", "restart", "deployment/ate-api-server", "-n", "ate-system"])
+    run(["kubectl", "rollout", "status", "deployment/ate-api-server", "-n", "ate-system", "--timeout=120s"])
+
+
+def deploy_substrate(store_backend: str = "redis", postgres_connection_string: str = "") -> None:
+    switch_store_backend(store_backend, postgres_connection_string)
     run(["hack/install-ate.sh", "--deploy-ate-system"])
 
 
@@ -405,22 +429,30 @@ def main() -> None:
             teardown_workloads()
             teardown_substrate()
 
-            status = "error"
+            repeat = test.get("repeat", 1)
             try:
-                deploy_substrate()
-                deploy_workloads(test.get("workerCount", 1))
-                try:
-                    status = run_test(test, locust_image, args.dest, commit)
-                except Exception as e:
-                    print(f"Test {test['name']} crashed: {e}", flush=True)
+                deploy_substrate(
+                    test.get("storeBackend", "redis"),
+                    test.get("postgresConnectionString", ""),
+                )
+                if test.get("deployWorkloads", True):
+                    deploy_workloads(test.get("workerCount", 1))
+                for rep in range(repeat):
+                    label = test["name"] if repeat == 1 else f"{test['name']} (rep {rep + 1}/{repeat})"
+                    status = "error"
+                    try:
+                        status = run_test(test, locust_image, args.dest, commit)
+                    except Exception as e:
+                        print(f"Test {label} crashed: {e}", flush=True)
+                    results.append((label, status))
             except Exception as e:
                 print(f"Test {test['name']} setup failed: {e}", flush=True)
+                results.append((test["name"], "error"))
             finally:
                 # Always tear down, even if deploy or run failed, so the
                 # next test (and the next CronJob fire) starts clean.
                 teardown_workloads()
                 teardown_substrate()
-            results.append((test["name"], status))
         finally:
             # Drop .ate-dev-env.sh so the next test cannot accidentally
             # inherit this one's cluster/project if the next

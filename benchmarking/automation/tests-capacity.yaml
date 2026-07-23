@@ -1,0 +1,78 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Saturation sweep for the ateapi store backends. This is deliberately a
+# separate matrix from tests.yaml so it can be run without repeating the
+# original latency/lifecycle experiment.
+#
+# StorageCrudUser issues create/get/update/list/delete sequentially. With both
+# wait bounds set to zero, achieved RPS and latency are controlled by service
+# capacity rather than the benchmark's think time. Two concurrency levels give
+# us one moderate and one high-pressure point without turning an iteration into
+# an hour-long suite.
+
+x-postgres-dsn: &postgres_dsn "postgresql://postgres@postgres.ate-system.svc:5432/atepg?sslmode=verify-full&sslrootcert=/etc/valkey-ca/ca.crt&sslcert=/run/servicedns.podcert.ate.dev/credential-bundle.pem&sslkey=/run/servicedns.podcert.ate.dev/credential-bundle.pem"
+
+tests:
+  - name: capacity_crud_u50_redis
+    description: "Zero-wait mixed CRUD capacity: 50 users (backend: redis)"
+    targetCluster: dev
+    file: /app/tests/ate_storage.py
+    duration: 60s
+    users: 50
+    deployWorkloads: false
+    repeat: 3
+    flags: &capacity_flags
+      - StorageCrudUser
+      - --reset-before
+      - --min-wait-time
+      - "0"
+      - --max-wait-time
+      - "0"
+      - --spawn-rate
+      - "50"
+
+  - name: capacity_crud_u200_redis
+    description: "Zero-wait mixed CRUD capacity: 200 users (backend: redis)"
+    targetCluster: dev
+    file: /app/tests/ate_storage.py
+    duration: 60s
+    users: 200
+    deployWorkloads: false
+    repeat: 3
+    flags: *capacity_flags
+
+  - name: capacity_crud_u50_postgres
+    description: "Zero-wait mixed CRUD capacity: 50 users (backend: postgres)"
+    targetCluster: dev
+    storeBackend: postgres
+    postgresConnectionString: *postgres_dsn
+    file: /app/tests/ate_storage.py
+    duration: 60s
+    users: 50
+    deployWorkloads: false
+    repeat: 3
+    flags: *capacity_flags
+
+  - name: capacity_crud_u200_postgres
+    description: "Zero-wait mixed CRUD capacity: 200 users (backend: postgres)"
+    targetCluster: dev
+    storeBackend: postgres
+    postgresConnectionString: *postgres_dsn
+    file: /app/tests/ate_storage.py
+    duration: 60s
+    users: 200
+    deployWorkloads: false
+    repeat: 3
+    flags: *capacity_flags

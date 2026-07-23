@@ -1,0 +1,159 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Optional `repeat` (default 1) runs this test's runner.py invocation that
+# many times back-to-back (same deploy, no teardown between repeats). Each
+# repeat gets its own runner.py timestamp, so results land side-by-side
+# under runs/<name>/ for median/variance analysis (see summarize_results.py).
+#
+# Optional `storeBackend` (default "redis") selects ateapi's --store-backend
+# for this test's deploy; "postgres" additionally requires
+# `postgresConnectionString` (the DSN ateapi uses to reach the PostgreSQL
+# StatefulSet from manifests/ate-install/postgres.yaml -- see
+# docs/postgres-store-prototype.md) and makes the orchestrator run
+# `hack/install-ate.sh --deploy-postgres` before deploying substrate.
+
+x-postgres-dsn: &postgres_dsn "postgresql://postgres@postgres.ate-system.svc:5432/atepg?sslmode=verify-full&sslrootcert=/etc/valkey-ca/ca.crt&sslcert=/run/servicedns.podcert.ate.dev/credential-bundle.pem&sslkey=/run/servicedns.podcert.ate.dev/credential-bundle.pem"
+
+tests:
+  # Store backend comparison matrix (docs/postgres-store-prototype.md).
+  # Names are suffixed by backend so `_postgres` twins can be added later,
+  # once atepg and --store-backend exist, without touching this harness.
+  - name: storage_point_read_heavy_redis
+    description: "Point-read-heavy load: GetActor only (backend: redis)"
+    targetCluster: dev
+    file: /app/tests/ate_storage.py
+    duration: 2m
+    users: 20
+    workerCount: 1
+    repeat: 3
+    flags:
+      - "StorageReadUser"
+      - "--reset-before"
+  - name: storage_mixed_crud_redis
+    description: "Mixed CRUD load: create/get/update/list/delete actor (backend: redis)"
+    targetCluster: dev
+    file: /app/tests/ate_storage.py
+    duration: 2m
+    users: 20
+    workerCount: 1
+    repeat: 3
+    flags:
+      - "StorageCrudUser"
+      - "--reset-before"
+  - name: storage_list_1000_redis
+    description: "List load with 1000 preloaded actors (backend: redis)"
+    targetCluster: dev
+    file: /app/tests/ate_storage.py
+    duration: 2m
+    users: 10
+    workerCount: 1
+    repeat: 3
+    flags:
+      - "StorageCrudUser"
+      - "--reset-before"
+      - "--preload"
+      - "1000"
+  - name: storage_list_10000_redis
+    description: "List load with 10000 preloaded actors (backend: redis)"
+    targetCluster: dev
+    file: /app/tests/ate_storage.py
+    duration: 2m
+    users: 10
+    workerCount: 1
+    repeat: 3
+    flags:
+      - "StorageCrudUser"
+      - "--reset-before"
+      - "--preload"
+      - "10000"
+  - name: lifecycle_sufficient_workers_redis
+    description: "AteAPIUser lifecycle load with workers >= users (backend: redis)"
+    targetCluster: dev
+    file: /app/tests/ate_api.py
+    duration: 2m
+    users: 10
+    workerCount: 10
+    repeat: 3
+
+  # Postgres twins of the storage/lifecycle cases above. Same files,
+  # durations, users, and flags -- only targetCluster/storeBackend/
+  # postgresConnectionString differ, per the harness design in
+  # docs/postgres-store-prototype.md (compare identical API workloads).
+  - name: storage_point_read_heavy_postgres
+    description: "Point-read-heavy load: GetActor only (backend: postgres)"
+    targetCluster: dev
+    storeBackend: postgres
+    postgresConnectionString: *postgres_dsn
+    file: /app/tests/ate_storage.py
+    duration: 2m
+    users: 20
+    workerCount: 1
+    repeat: 3
+    flags:
+      - "StorageReadUser"
+      - "--reset-before"
+  - name: storage_mixed_crud_postgres
+    description: "Mixed CRUD load: create/get/update/list/delete actor (backend: postgres)"
+    targetCluster: dev
+    storeBackend: postgres
+    postgresConnectionString: *postgres_dsn
+    file: /app/tests/ate_storage.py
+    duration: 2m
+    users: 20
+    workerCount: 1
+    repeat: 3
+    flags:
+      - "StorageCrudUser"
+      - "--reset-before"
+  - name: storage_list_1000_postgres
+    description: "List load with 1000 preloaded actors (backend: postgres)"
+    targetCluster: dev
+    storeBackend: postgres
+    postgresConnectionString: *postgres_dsn
+    file: /app/tests/ate_storage.py
+    duration: 2m
+    users: 10
+    workerCount: 1
+    repeat: 3
+    flags:
+      - "StorageCrudUser"
+      - "--reset-before"
+      - "--preload"
+      - "1000"
+  - name: storage_list_10000_postgres
+    description: "List load with 10000 preloaded actors (backend: postgres)"
+    targetCluster: dev
+    storeBackend: postgres
+    postgresConnectionString: *postgres_dsn
+    file: /app/tests/ate_storage.py
+    duration: 2m
+    users: 10
+    workerCount: 1
+    repeat: 3
+    flags:
+      - "StorageCrudUser"
+      - "--reset-before"
+      - "--preload"
+      - "10000"
+  - name: lifecycle_sufficient_workers_postgres
+    description: "AteAPIUser lifecycle load with workers >= users (backend: postgres)"
+    targetCluster: dev
+    storeBackend: postgres
+    postgresConnectionString: *postgres_dsn
+    file: /app/tests/ate_api.py
+    duration: 2m
+    users: 10
+    workerCount: 10
+    repeat: 3

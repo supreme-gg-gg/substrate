@@ -44,6 +44,18 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8000"
     spec:
+      # The zero-wait capacity matrix can consume multiple cores in both
+      # Locust and ateapi. Require separate nodes so the load generator does
+      # not steal CPU from the system under test.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: ate-api-server
+            namespaces:
+            - ate-system
+            topologyKey: kubernetes.io/hostname
       containers:
       - name: locust-master
         image: us-docker.pkg.dev/${PROJECT_ID}/gcr.io/ate-images/locust-test:latest
