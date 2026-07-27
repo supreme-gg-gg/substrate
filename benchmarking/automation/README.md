@@ -135,7 +135,7 @@ gcloud storage buckets add-iam-policy-binding gs://<DEST_BUCKET> \
 `/etc/orchestrator/tests.yaml`, so the image doesn't need to be rebuilt when
 the test list changes. Just reapply the config map.
 
-## Store backend comparison (docs/postgres-store-prototype.md)
+## Store backend comparison (docs/postgres-store.md)
 
 `tests.yaml` has `_redis` and `_postgres` twins of every storage/lifecycle
 case (point-read-heavy, mixed CRUD, list load at increasing actor counts,
@@ -299,24 +299,24 @@ known to be ready; the runner cannot infer ateapi's current store safely.
 
 If you already have substrate deployed on your current kubectl context (e.g.
 a personal GKE dev cluster), you don't need the CronJob or a separate
-orchestration cluster. `run.py` can submit the same per-test Kubernetes
-Jobs used by scheduled automation:
-
-```bash
-python3 benchmarking/automation/run.py \
-  --execution job \
-  --image <runner-image> \
-  --dest gs://<bucket>/<prefix>
-```
-
-For development without a GCS bucket or Workload Identity binding, the
-isolated-Pod mode copies results to local disk before deleting each Pod:
+orchestration cluster. The recommended isolated-Pod mode copies results to
+local disk before deleting each Pod:
 
 ```bash
 python3 benchmarking/automation/run.py \
   --execution pod \
   --image <runner-image> \
   --out ./bench-results
+```
+
+For unattended automation, `run.py` can instead submit the same per-test
+Kubernetes Jobs used by the scheduled orchestrator and upload results to GCS:
+
+```bash
+python3 benchmarking/automation/run.py \
+  --execution job \
+  --image <runner-image> \
+  --dest gs://<bucket>/<prefix>
 ```
 
 If `--image` is omitted, `run.py` discovers it from the existing

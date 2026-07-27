@@ -21,9 +21,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// schema is the prototype's idempotent embedded schema. A production migration
+// schema is atepg's idempotent embedded schema. A production migration
 // mechanism and restricted database roles are deferred (see
-// docs/postgres-store-prototype.md).
+// docs/postgres-store.md).
 const schema = `
 CREATE TABLE IF NOT EXISTS atespaces (
     name         text PRIMARY KEY,
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS leases (
 );
 `
 
-// applySchema idempotently creates the prototype's tables.
+// applySchema idempotently creates atepg's tables.
 func applySchema(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, schema); err != nil {
 		return fmt.Errorf("applying atepg schema: %w", err)

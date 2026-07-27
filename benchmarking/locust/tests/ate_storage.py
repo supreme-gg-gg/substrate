@@ -15,7 +15,7 @@
 """Storage-focused workload: create/get/update/list/delete actor.
 
 This is the "storage-focused API workload" from
-docs/postgres-store-prototype.md's benchmark plan. Unlike AteAPIUser
+docs/postgres-store.md's benchmark workloads. Unlike AteAPIUser
 (ate_api.py), it never calls ResumeActor/SuspendActor, so it exercises the
 store backend (ateredis today, atepg later) without worker scheduling or
 snapshot overhead mixed in.

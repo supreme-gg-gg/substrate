@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Experimental PostgreSQL backend for the postgres-store-prototype (see
-# docs/postgres-store-prototype.md). Single-replica, dev-only, not wired into
+# Experimental PostgreSQL backend for ateapi (see docs/postgres-store.md).
+# Single-replica, dev-only, not wired into
 # the default `--store-backend` (which stays "redis"). Not resource- or
 # HA-equivalent to valkey.yaml's six-process cluster; see the doc's
 # benchmarking section before comparing the two.
@@ -122,7 +122,7 @@ spec:
           readOnly: true
         - name: data
           mountPath: /var/lib/postgresql/data
-        # Per docs/postgres-store-prototype.md: this is a single pod, not
+        # Per docs/postgres-store.md: this is a single pod, not
         # resource-equivalent to valkey.yaml's 6-pod cluster. Record both
         # allocations alongside benchmark results rather than treating these
         # as a cost-equal comparison.

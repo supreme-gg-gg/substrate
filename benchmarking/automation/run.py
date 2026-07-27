@@ -18,15 +18,15 @@ by the current kubectl context.
 
 Reuses deploy_substrate()/deploy_workloads() from orchestrator.py, so
 backend switching (redis <-> postgres) matches exactly what the scheduled
-automation does. The recommended ``job`` execution submits the same Kubernetes
-Job used by scheduled automation and writes results to GCS. ``pod`` execution
-uses an isolated idle Pod and copies results back to local disk.
+automation does. The default and recommended ``pod`` execution uses an
+isolated runner Pod and copies results back to local disk. ``job`` execution
+submits the Kubernetes Job used by scheduled automation and writes results to
+GCS.
 
 Usage:
-    python3 benchmarking/automation/run_local.py  # runs every test in tests.yaml
-    python3 benchmarking/automation/run_local.py --tests tests-storage.yaml --only storage_mixed_crud
-    python3 benchmarking/automation/run_local.py --tests tests-capacity.yaml \
-        --tests tests-worker-contention.yaml --backend redis
+    python3 benchmarking/automation/run.py  # runs every test in tests.yaml
+    python3 benchmarking/automation/run.py --tests tests-storage.yaml --only storage_mixed_crud
+    python3 benchmarking/automation/run.py --tests tests-capacity.yaml --backend redis
 """
 
 import argparse
@@ -348,7 +348,7 @@ def main() -> None:
                 # existing worker pods alive across a backend switch can give
                 # the new backend an empty workers table until those pods
                 # happen to restart, invalidating lifecycle/contention tests.
-                # Do this on the initial switch too: a prior run_local process
+                # Do this on the initial switch too: a prior run.py process
                 # may have left workloads registered in the other backend.
                 orch.teardown_workloads()
                 workloads_deployed = False

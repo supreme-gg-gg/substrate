@@ -72,7 +72,7 @@ var (
 	redisTLSServerName  = pflag.String("redis-tls-server-name", "", "The ServerName to use for Redis TLS hostname verification.")
 	redisClientCert     = pflag.String("redis-client-cert", "", "The file containing client TLS certificate/key credential bundle for Redis/Valkey.")
 
-	storeBackend             = pflag.String("store-backend", "redis", "The persistence backend to use: redis|postgres. Experimental; see docs/postgres-store-prototype.md.")
+	storeBackend             = pflag.String("store-backend", "redis", "The persistence backend to use: redis|postgres. Experimental; see docs/postgres-store.md.")
 	postgresConnectionString = pflag.String("postgres-connection-string", "", "PostgreSQL connection string (libpq DSN or URI), used when --store-backend=postgres. TLS is configured entirely through this string's sslmode/sslrootcert/sslcert/sslkey parameters.")
 	ateletSimulatorAddress   = pflag.String("atelet-simulator-address", "", "Route all worker runtime RPCs to this static atelet endpoint. Benchmark-only; empty uses Kubernetes worker/atelet discovery.")
 

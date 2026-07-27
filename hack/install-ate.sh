@@ -80,7 +80,7 @@ function usage() {
   echo "  --create-valkey-ca-certs-secret        Create Valkey CA certs secret"
   echo "  --create-api-server-env-vars           Create ate-api-server env vars"
   echo ""
-  echo "Experimental PostgreSQL store prototype (see docs/postgres-store-prototype.md;"
+  echo "Experimental PostgreSQL store (see docs/postgres-store.md;"
   echo "opt-in only -- --deploy-ate-system does not deploy or require this):"
   echo ""
   echo "  --create-postgres-ca-certs-secret      Create PostgreSQL CA certs secret"
@@ -227,7 +227,7 @@ create_postgres_ca_certs_secret() {
 }
 
 # deploy_postgres deploys the experimental single-replica PostgreSQL
-# StatefulSet (see docs/postgres-store-prototype.md). It is opt-in: unlike
+# StatefulSet (see docs/postgres-store.md). It is opt-in: unlike
 # Valkey, it is not part of --deploy-ate-system and ateapi's default
 # --store-backend remains "redis".
 deploy_postgres() {
@@ -302,7 +302,7 @@ create_api_server_env_vars() {
   # store-backend/postgres-connection-string default to the existing Redis
   # path so `--deploy-ate-system` is unaffected; `--store-backend=postgres`
   # below (used by --deploy-postgres) opts a running install into the
-  # experimental PostgreSQL prototype without touching this function's
+  # experimental PostgreSQL backend without touching this function's
   # default.
   run_kubectl create configmap -n ate-system ate-api-server-envvars \
     --from-literal=ATE_API_REDIS_ADDRESS="${redis_address}" \

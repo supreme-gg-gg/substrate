@@ -279,7 +279,7 @@ def switch_store_backend(
 ) -> None:
     """Point an already-deployed ate-api-server at a different store backend,
     without touching the rest of substrate (CRDs, atenet, atelet, valkey).
-    Used directly by run_local.py, which assumes substrate is already up;
+    Used directly by run.py, which assumes substrate is already up;
     deploy_substrate() below also calls this as one step of a full deploy."""
     if store_backend == "postgres":
         run(["hack/install-ate.sh", "--deploy-postgres"])

@@ -21,13 +21,13 @@
 # for this test's deploy; "postgres" additionally requires
 # `postgresConnectionString` (the DSN ateapi uses to reach the PostgreSQL
 # StatefulSet from manifests/ate-install/postgres.yaml -- see
-# docs/postgres-store-prototype.md) and makes the orchestrator run
+# docs/postgres-store.md) and makes the orchestrator run
 # `hack/install-ate.sh --deploy-postgres` before deploying substrate.
 
 x-postgres-dsn: &postgres_dsn "postgresql://postgres@postgres.ate-system.svc:5432/atepg?sslmode=verify-full&sslrootcert=/etc/valkey-ca/ca.crt&sslcert=/run/servicedns.podcert.ate.dev/credential-bundle.pem&sslkey=/run/servicedns.podcert.ate.dev/credential-bundle.pem"
 
 tests:
-  # Store backend comparison matrix (docs/postgres-store-prototype.md).
+  # Store backend comparison matrix (docs/postgres-store.md).
   # Names are suffixed by backend so `_postgres` twins can be added later,
   # once atepg and --store-backend exist, without touching this harness.
   - name: storage_point_read_heavy_redis
@@ -90,7 +90,7 @@ tests:
   # Postgres twins of the storage/lifecycle cases above. Same files,
   # durations, users, and flags -- only targetCluster/storeBackend/
   # postgresConnectionString differ, per the harness design in
-  # docs/postgres-store-prototype.md (compare identical API workloads).
+  # docs/postgres-store.md (compare identical API workloads).
   - name: storage_point_read_heavy_postgres
     description: "Point-read-heavy load: GetActor only (backend: postgres)"
     targetCluster: dev

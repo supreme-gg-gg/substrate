@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Package atepg is an experimental ate storage backend built on PostgreSQL.
-// See docs/postgres-store-prototype.md for the design this implements.
+// See docs/postgres-store.md for an implementation overview.
 //
 // Each table holds native SQL columns for fields SQL must operate on
 // (primary keys, versions, timestamps, pagination, update/delete
@@ -51,8 +51,7 @@ type Persistence struct {
 var _ store.Interface = (*Persistence)(nil)
 
 // Connect opens a pgxpool against dsn, verifies connectivity, and applies the
-// prototype's embedded schema. Startup fails if the database cannot be
-// reached.
+// embedded schema. Startup fails if the database cannot be reached.
 func Connect(ctx context.Context, dsn string) (*Persistence, error) {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -70,8 +69,8 @@ func Connect(ctx context.Context, dsn string) (*Persistence, error) {
 	return p, nil
 }
 
-// NewPersistence wraps an already-open pool, applying the prototype's
-// idempotent schema. Callers that already hold a pool (e.g. tests using
+// NewPersistence wraps an already-open pool, applying the idempotent schema.
+// Callers that already hold a pool (e.g. tests using
 // testcontainers) use this directly instead of Connect.
 func NewPersistence(ctx context.Context, pool *pgxpool.Pool) (*Persistence, error) {
 	if err := applySchema(ctx, pool); err != nil {
