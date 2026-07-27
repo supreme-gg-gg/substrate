@@ -26,7 +26,7 @@ GCS.
 Usage:
     python3 benchmarking/automation/run.py  # runs every test in tests.yaml
     python3 benchmarking/automation/run.py --tests tests-storage.yaml --only storage_mixed_crud
-    python3 benchmarking/automation/run.py --tests tests-capacity.yaml --backend redis
+    python3 benchmarking/automation/run.py --tests tests-capacity.yaml --only capacity_redis
 """
 
 import argparse
@@ -57,14 +57,10 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--only", help="Only run tests whose name contains this substring")
     p.add_argument(
-        "--backend",
-        choices=("redis", "postgres"),
-        help="Only run entries for this backend",
-    )
-    p.add_argument(
         "--reuse-current-backend",
         action="store_true",
-        help="Do not restart ateapi for the initial backend; requires --backend and assumes the cluster is already configured for it",
+        help="Do not restart ateapi for the first matched test; assumes the "
+        "cluster is already configured for that test's backend",
     )
     p.add_argument(
         "--execution",
@@ -290,8 +286,6 @@ def run_runner_job(
 
 def main() -> None:
     args = parse_args()
-    if args.reuse_current_backend and not args.backend:
-        raise SystemExit("--reuse-current-backend requires --backend")
     if args.execution == "job" and not args.dest:
         raise SystemExit("--execution=job requires --dest")
     if args.execution == "job" and args.namespace != "benchmarking":
@@ -305,11 +299,6 @@ def main() -> None:
         tests.extend(yaml.safe_load(Path(test_file).read_text())["tests"])
     if args.only:
         tests = [t for t in tests if args.only in t["name"]]
-    if args.backend:
-        tests = [
-            t for t in tests
-            if t.get("storeBackend", "redis") == args.backend
-        ]
     if not tests:
         sys.exit("No tests matched the requested filters")
 

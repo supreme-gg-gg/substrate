@@ -36,6 +36,7 @@ import grpc
 from locust import User, task
 from common import ateapi_pb2
 from common import ateapi_pb2_grpc
+from common.ateapi_channel import open_channel as open_ateapi_channel
 from common.atespace import ATESPACE, ensure_atespace
 from common.grpc_tracing import traced_grpc
 from common.metrics import init_metrics, update_user_count
@@ -51,14 +52,7 @@ init_wait_time()
 
 
 def _open_channel():
-    with open("/run/servicedns-ca/ca.crt", "rb") as f:
-        ca_cert = f.read()
-    options = [("grpc.ssl_target_name_override", "api.ate-system.svc")]
-    return grpc.secure_channel(
-        "api.ate-system.svc.cluster.local:443",
-        grpc.ssl_channel_credentials(root_certificates=ca_cert),
-        options=options,
-    )
+    return open_ateapi_channel()
 
 
 class StorageCrudUser(User):

@@ -42,6 +42,7 @@ from locust import User, events, task
 from locust.argument_parser import LocustArgumentParser
 
 from common import ateapi_pb2, ateapi_pb2_grpc
+from common.ateapi_channel import open_channel as open_ateapi_channel
 from common.atespace import ATESPACE, ensure_atespace
 from common.grpc_tracing import _read_server_elapsed_ms
 from common.metrics import init_metrics, update_user_count
@@ -58,6 +59,11 @@ init_wait_time()
 
 @events.init_command_line_parser.add_listener
 def add_worker_contention_args(parser: LocustArgumentParser) -> None:
+    # lifecycle_scale.py exposes the same shared control when Locust loads
+    # the whole tests directory for UI/class-picker mode. A single-test
+    # runner loads only this module.
+    if "--worker-hold-time" in parser._option_string_actions:
+        return
     parser.add_argument(
         "--worker-hold-time",
         type=float,
@@ -68,14 +74,7 @@ def add_worker_contention_args(parser: LocustArgumentParser) -> None:
 
 
 def _open_channel():
-    with open("/run/servicedns-ca/ca.crt", "rb") as f:
-        ca_cert = f.read()
-    options = [("grpc.ssl_target_name_override", "api.ate-system.svc")]
-    return grpc.secure_channel(
-        "api.ate-system.svc.cluster.local:443",
-        grpc.ssl_channel_credentials(root_certificates=ca_cert),
-        options=options,
-    )
+    return open_ateapi_channel()
 
 
 def _elapsed_ms(start: float, call: grpc.Call | None) -> float:

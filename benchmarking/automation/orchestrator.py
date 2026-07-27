@@ -296,8 +296,14 @@ def switch_store_backend(
     run(["hack/install-ate.sh", "--create-api-server-env-vars"], env=env)
 
     # Recreating the ConfigMap alone doesn't restart already-running pods.
-    run_no_check(["kubectl", "rollout", "restart", "deployment/ate-api-server", "-n", "ate-system"])
+    run(["kubectl", "rollout", "restart", "deployment/ate-api-server", "-n", "ate-system"])
     run(["kubectl", "rollout", "status", "deployment/ate-api-server", "-n", "ate-system", "--timeout=120s"])
+
+    # ate-controller keeps a long-lived gRPC connection to ateapi. Restart it
+    # after the API rollout so a newly created ActorTemplate cannot bootstrap
+    # its golden actor through a connection to the previous store backend.
+    run(["kubectl", "rollout", "restart", "deployment/ate-controller", "-n", "ate-system"])
+    run(["kubectl", "rollout", "status", "deployment/ate-controller", "-n", "ate-system", "--timeout=120s"])
 
 
 def deploy_substrate(

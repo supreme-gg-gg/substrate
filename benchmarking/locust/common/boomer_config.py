@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 # Boomer-tunable flags. CLI form ("--foo-bar") is converted to the
 # attribute / JSON-key form ("foo_bar") by _attr().
 _FLAGS = ("--trace-probability", "--min-wait-time", "--max-wait-time")
+_initialized = False
 
 
 def _attr(flag: str) -> str:
@@ -71,6 +72,11 @@ def init_boomer_config() -> None:
     """Ensure the owning modules have registered the boomer-tunable flags,
     then expose their current values at /boomer-config so boomer-Go workers
     can fetch them at runtime."""
+    global _initialized
+    if _initialized:
+        return
+    _initialized = True
+
     init_tracing()
     init_wait_time()
 

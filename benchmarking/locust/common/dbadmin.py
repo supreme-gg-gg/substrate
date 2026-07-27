@@ -22,23 +22,17 @@ this is setup, not measured workload.
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-import grpc
-
 from common import ateapi_pb2
 from common import ateapi_pb2_grpc
+from common.ateapi_channel import DEFAULT_HOST, open_channel
 
-HOST = "api.ate-system.svc.cluster.local:443"
+HOST = DEFAULT_HOST
 ATESPACE = "benchmark"
 
 
 def build_stubs(host: str = HOST):
-    """Open a TLS channel to ateapi and return (channel, ControlStub, DebugStub)."""
-    with open("/run/servicedns-ca/ca.crt", "rb") as f:
-        ca_cert = f.read()
-    options = [("grpc.ssl_target_name_override", "api.ate-system.svc")]
-    channel = grpc.secure_channel(
-        host, grpc.ssl_channel_credentials(root_certificates=ca_cert), options=options
-    )
+    """Open an mTLS channel and return (channel, ControlStub, DebugStub)."""
+    channel = open_channel(host)
     return channel, ateapi_pb2_grpc.ControlStub(channel), ateapi_pb2_grpc.DebugStub(channel)
 
 

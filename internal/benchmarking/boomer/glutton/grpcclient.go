@@ -15,25 +15,31 @@
 package glutton
 
 import (
-	"crypto/tls"
 	"fmt"
 
+	"github.com/agent-substrate/substrate/internal/ateapiauth"
 	"github.com/agent-substrate/substrate/pkg/proto/ateapipb"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
-// DialControl opens a TLS gRPC connection to ateapi. Matches the dial
-// pattern in internal/ateclient/builder.go: TLS for transport encryption,
-// hostname verification skipped (intra-cluster; the in-cluster cert often
-// lacks the SAN entries Go's strict verifier requires).
+const (
+	ateapiServerCA         = "/run/servicedns-ca/ca.crt"
+	ateapiClientCredBundle = "/run/podidentity.podcert.ate.dev/credential-bundle.pem"
+)
+
+// DialControl opens an authenticated mTLS gRPC connection to ateapi.
 func DialControl(endpoint string) (*grpc.ClientConn, ateapipb.ControlClient, error) {
-	creds := credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})
-	conn, err := grpc.NewClient(endpoint,
-		grpc.WithTransportCredentials(creds),
-		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-	)
+	opts, err := ateapiauth.DialOptions(ateapiauth.ClientConfig{
+		CAFile:           ateapiServerCA,
+		ServerName:       "api.ate-system.svc",
+		ClientCredBundle: ateapiClientCredBundle,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("configure ateapi credentials: %w", err)
+	}
+	opts = append(opts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	conn, err := grpc.NewClient(endpoint, opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("dial %s: %w", endpoint, err)
 	}
