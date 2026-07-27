@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -90,7 +89,7 @@ func requirePool(t *testing.T) *pgxpool.Pool {
 	return containerPool
 }
 
-func setupPostgresStore(t *testing.T) store.Interface {
+func setupPostgresPersistence(t *testing.T) *Persistence {
 	t.Helper()
 	ctx := context.Background()
 	p, err := NewPersistence(ctx, requirePool(t))
@@ -101,6 +100,11 @@ func setupPostgresStore(t *testing.T) store.Interface {
 		t.Fatalf("DebugClearAll failed: %v", err)
 	}
 	return p
+}
+
+func setupPostgresStore(t *testing.T) store.Interface {
+	t.Helper()
+	return setupPostgresPersistence(t)
 }
 
 // TestContractSuite runs the backend-neutral store.Interface assertions
@@ -251,7 +255,7 @@ func TestListActors_CrossScopePageToken(t *testing.T) {
 }
 
 func TestAcquireLock_ExpiresAfterHolderStops(t *testing.T) {
-	s := setupPostgresStore(t)
+	s := setupPostgresPersistence(t)
 	s.lockTTL = 200 * time.Millisecond
 	holderCtx, cancelHolder := context.WithCancel(context.Background())
 	lock, err := s.AcquireLock(holderCtx, "test-lock")
@@ -282,7 +286,7 @@ func TestAcquireLock_ExpiresAfterHolderStops(t *testing.T) {
 // guarantee under real concurrency, which a single-connection unit test
 // can't exercise.
 func TestAcquireLock_ConcurrentTakeover(t *testing.T) {
-	s := setupPostgresStore(t)
+	s := setupPostgresPersistence(t)
 	s.lockTTL = time.Millisecond
 	holderCtx, cancelHolder := context.WithCancel(context.Background())
 	initial, err := s.AcquireLock(holderCtx, "contested-lock")
@@ -295,7 +299,7 @@ func TestAcquireLock_ConcurrentTakeover(t *testing.T) {
 	s.lockTTL = 10 * time.Second
 
 	const numRacers = 20
-	var wins atomic.Int32
+	winners := make(chan *store.Lock, numRacers)
 	var wg sync.WaitGroup
 	for i := 0; i < numRacers; i++ {
 		wg.Add(1)
@@ -308,13 +312,19 @@ func TestAcquireLock_ConcurrentTakeover(t *testing.T) {
 				}
 				return
 			}
-			wins.Add(1)
-			defer lock.Close()
+			// Keep the winning lease held until every racer has attempted
+			// acquisition. Releasing it here would let later racers win
+			// sequentially rather than testing concurrent takeover.
+			winners <- lock
 		}(i)
 	}
 	wg.Wait()
+	close(winners)
 
-	if got := wins.Load(); got != 1 {
+	if got := len(winners); got != 1 {
 		t.Errorf("expected exactly 1 racer to win the expired lease, got %d", got)
+	}
+	for lock := range winners {
+		lock.Close()
 	}
 }
