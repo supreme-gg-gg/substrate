@@ -92,6 +92,7 @@ spec:
           - --redis-client-cert=@env
           - --store-backend=@env
           - --postgres-connection-string=@env
+          - --atelet-simulator-address=@env
           - --client-jwt-issuer=@env
           - --client-jwt-audience=api.ate-system.svc
           - --session-id-jwt-pool=/run/session-id-jwt-pool/pool.json

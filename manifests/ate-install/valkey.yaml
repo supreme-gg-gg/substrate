@@ -43,6 +43,7 @@ data:
     cluster-config-file nodes.conf
     cluster-node-timeout 5000
     appendonly yes
+    appendfsync always
     protected-mode no
 ---
 apiVersion: v1

@@ -312,6 +312,7 @@ create_api_server_env_vars() {
     --from-literal=ATE_API_K8SJWT_ISSUER="${jwt_issuer}" \
     --from-literal=ATE_API_STORE_BACKEND="${ATE_API_STORE_BACKEND:-redis}" \
     --from-literal=ATE_API_POSTGRES_CONNECTION_STRING="${ATE_API_POSTGRES_CONNECTION_STRING:-}" \
+    --from-literal=ATE_API_ATELET_SIMULATOR_ADDRESS="${ATE_API_ATELET_SIMULATOR_ADDRESS:-}" \
     --dry-run=client -o yaml \
     | run_kubectl apply -f -
 }

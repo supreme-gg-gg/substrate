@@ -355,11 +355,47 @@ message KubeNamespacedObjectRef {
 service Debug {
   // Debugging: drop all data from the ate database.
   rpc DebugClear(DebugClearRequest) returns (DebugClearResponse) {}
+
+  // Benchmark setup: create a deterministic actor population and synthetic
+  // workers without creating Kubernetes worker Pods.
+  rpc DebugSeedScale(DebugSeedScaleRequest) returns (DebugSeedScaleResponse) {}
+
+  // Benchmark verification: check actor/worker assignment consistency.
+  rpc DebugVerifyScale(DebugVerifyScaleRequest) returns (DebugVerifyScaleResponse) {}
 }
 
 message DebugClearRequest {}
 
 message DebugClearResponse {}
+
+message DebugSeedScaleRequest {
+  int32 actor_count = 1;
+  int32 worker_count = 2;
+  string atespace = 3;
+  string actor_template_namespace = 4;
+  string actor_template_name = 5;
+}
+
+message DebugSeedScaleResponse {
+  int32 actors_created = 1;
+  int32 workers_created = 2;
+}
+
+message DebugVerifyScaleRequest {
+  string atespace = 1;
+  int32 expected_actor_count = 2;
+  int32 expected_worker_count = 3;
+}
+
+message DebugVerifyScaleResponse {
+  int32 actor_count = 1;
+  int32 worker_count = 2;
+  int32 suspended_actor_count = 3;
+  int32 running_actor_count = 4;
+  int32 transitional_actor_count = 5;
+  int32 assigned_worker_count = 6;
+  repeated string violations = 7;
+}
 
 // SessionIdentity allows substrate workloads to exchange their
 // infrastructure-level credentials (k8s service account token, etc.) for a

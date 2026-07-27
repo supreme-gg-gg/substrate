@@ -623,7 +623,9 @@ var Control_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	Debug_DebugClear_FullMethodName = "/ateapi.Debug/DebugClear"
+	Debug_DebugClear_FullMethodName       = "/ateapi.Debug/DebugClear"
+	Debug_DebugSeedScale_FullMethodName   = "/ateapi.Debug/DebugSeedScale"
+	Debug_DebugVerifyScale_FullMethodName = "/ateapi.Debug/DebugVerifyScale"
 )
 
 // DebugClient is the client API for Debug service.
@@ -635,6 +637,11 @@ const (
 type DebugClient interface {
 	// Debugging: drop all data from the ate database.
 	DebugClear(ctx context.Context, in *DebugClearRequest, opts ...grpc.CallOption) (*DebugClearResponse, error)
+	// Benchmark setup: create a deterministic actor population and synthetic
+	// workers without creating Kubernetes worker Pods.
+	DebugSeedScale(ctx context.Context, in *DebugSeedScaleRequest, opts ...grpc.CallOption) (*DebugSeedScaleResponse, error)
+	// Benchmark verification: check actor/worker assignment consistency.
+	DebugVerifyScale(ctx context.Context, in *DebugVerifyScaleRequest, opts ...grpc.CallOption) (*DebugVerifyScaleResponse, error)
 }
 
 type debugClient struct {
@@ -655,6 +662,26 @@ func (c *debugClient) DebugClear(ctx context.Context, in *DebugClearRequest, opt
 	return out, nil
 }
 
+func (c *debugClient) DebugSeedScale(ctx context.Context, in *DebugSeedScaleRequest, opts ...grpc.CallOption) (*DebugSeedScaleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DebugSeedScaleResponse)
+	err := c.cc.Invoke(ctx, Debug_DebugSeedScale_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *debugClient) DebugVerifyScale(ctx context.Context, in *DebugVerifyScaleRequest, opts ...grpc.CallOption) (*DebugVerifyScaleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DebugVerifyScaleResponse)
+	err := c.cc.Invoke(ctx, Debug_DebugVerifyScale_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DebugServer is the server API for Debug service.
 // All implementations must embed UnimplementedDebugServer
 // for forward compatibility.
@@ -664,6 +691,11 @@ func (c *debugClient) DebugClear(ctx context.Context, in *DebugClearRequest, opt
 type DebugServer interface {
 	// Debugging: drop all data from the ate database.
 	DebugClear(context.Context, *DebugClearRequest) (*DebugClearResponse, error)
+	// Benchmark setup: create a deterministic actor population and synthetic
+	// workers without creating Kubernetes worker Pods.
+	DebugSeedScale(context.Context, *DebugSeedScaleRequest) (*DebugSeedScaleResponse, error)
+	// Benchmark verification: check actor/worker assignment consistency.
+	DebugVerifyScale(context.Context, *DebugVerifyScaleRequest) (*DebugVerifyScaleResponse, error)
 	mustEmbedUnimplementedDebugServer()
 }
 
@@ -676,6 +708,12 @@ type UnimplementedDebugServer struct{}
 
 func (UnimplementedDebugServer) DebugClear(context.Context, *DebugClearRequest) (*DebugClearResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DebugClear not implemented")
+}
+func (UnimplementedDebugServer) DebugSeedScale(context.Context, *DebugSeedScaleRequest) (*DebugSeedScaleResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DebugSeedScale not implemented")
+}
+func (UnimplementedDebugServer) DebugVerifyScale(context.Context, *DebugVerifyScaleRequest) (*DebugVerifyScaleResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DebugVerifyScale not implemented")
 }
 func (UnimplementedDebugServer) mustEmbedUnimplementedDebugServer() {}
 func (UnimplementedDebugServer) testEmbeddedByValue()               {}
@@ -716,6 +754,42 @@ func _Debug_DebugClear_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Debug_DebugSeedScale_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DebugSeedScaleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DebugServer).DebugSeedScale(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Debug_DebugSeedScale_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DebugServer).DebugSeedScale(ctx, req.(*DebugSeedScaleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Debug_DebugVerifyScale_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DebugVerifyScaleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DebugServer).DebugVerifyScale(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Debug_DebugVerifyScale_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DebugServer).DebugVerifyScale(ctx, req.(*DebugVerifyScaleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Debug_ServiceDesc is the grpc.ServiceDesc for Debug service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -726,6 +800,14 @@ var Debug_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DebugClear",
 			Handler:    _Debug_DebugClear_Handler,
+		},
+		{
+			MethodName: "DebugSeedScale",
+			Handler:    _Debug_DebugSeedScale_Handler,
+		},
+		{
+			MethodName: "DebugVerifyScale",
+			Handler:    _Debug_DebugVerifyScale_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

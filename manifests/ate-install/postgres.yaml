@@ -128,10 +128,10 @@ spec:
         # as a cost-equal comparison.
         resources:
           requests:
-            cpu: "500m"
+            cpu: "1"
             memory: "1Gi"
           limits:
-            cpu: "1000m"
+            cpu: "2"
             memory: "2Gi"
       volumes:
       - name: config
