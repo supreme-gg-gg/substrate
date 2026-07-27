@@ -107,7 +107,7 @@ func (s *MarkSuspendingStep) RetryBackoff() *wait.Backoff { return nil }
 
 type CallAteletSuspendStep struct {
 	store  store.Interface
-	dialer *AteletDialer
+	dialer WorkerRuntimeDialer
 }
 
 func (s *CallAteletSuspendStep) Name() string { return "CallAteletSuspend" }

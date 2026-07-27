@@ -26,7 +26,7 @@ import (
 type Service struct {
 	ateapipb.UnimplementedControlServer
 	persistence         store.Interface
-	dialer              *AteletDialer
+	dialer              WorkerRuntimeDialer
 	actorTemplateLister listersv1alpha1.ActorTemplateLister
 	workerPoolLister    listersv1alpha1.WorkerPoolLister
 	actorWorkflow       *ActorWorkflow
@@ -41,7 +41,7 @@ func NewService(
 	actorTemplateLister listersv1alpha1.ActorTemplateLister,
 	workerPoolLister listersv1alpha1.WorkerPoolLister,
 	sandboxConfigLister listersv1alpha1.SandboxConfigLister,
-	dialer *AteletDialer,
+	dialer WorkerRuntimeDialer,
 	kubeClient kubernetes.Interface,
 ) *Service {
 	s := &Service{

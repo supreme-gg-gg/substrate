@@ -338,7 +338,7 @@ func (s *AssignWorkerStep) findFreeWorker(
 
 type CallAteletRestoreStep struct {
 	store               store.Interface
-	dialer              *AteletDialer
+	dialer              WorkerRuntimeDialer
 	kubeClient          kubernetes.Interface
 	secretCache         *envSecretCache
 	workerPoolLister    listersv1alpha1.WorkerPoolLister

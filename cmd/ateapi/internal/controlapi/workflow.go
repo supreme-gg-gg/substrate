@@ -130,7 +130,7 @@ func runStep[Params any, Context any](ctx context.Context, params Params, wCtx C
 type ActorWorkflow struct {
 	store               store.Interface
 	workerCache         *workercache.Cache
-	dialer              *AteletDialer
+	dialer              WorkerRuntimeDialer
 	actorTemplateLister listersv1alpha1.ActorTemplateLister
 	workerPoolLister    listersv1alpha1.WorkerPoolLister
 	sandboxConfigLister listersv1alpha1.SandboxConfigLister
@@ -142,7 +142,7 @@ type ActorWorkflow struct {
 func NewActorWorkflow(
 	store store.Interface,
 	workerCache *workercache.Cache,
-	dialer *AteletDialer,
+	dialer WorkerRuntimeDialer,
 	actorTemplateLister listersv1alpha1.ActorTemplateLister,
 	workerPoolLister listersv1alpha1.WorkerPoolLister,
 	sandboxConfigLister listersv1alpha1.SandboxConfigLister,

@@ -74,6 +74,7 @@ var (
 
 	storeBackend             = pflag.String("store-backend", "redis", "The persistence backend to use: redis|postgres. Experimental; see docs/postgres-store-prototype.md.")
 	postgresConnectionString = pflag.String("postgres-connection-string", "", "PostgreSQL connection string (libpq DSN or URI), used when --store-backend=postgres. TLS is configured entirely through this string's sslmode/sslrootcert/sslcert/sslkey parameters.")
+	ateletSimulatorAddress   = pflag.String("atelet-simulator-address", "", "Route all worker runtime RPCs to this static atelet endpoint. Benchmark-only; empty uses Kubernetes worker/atelet discovery.")
 
 	clientJWTIssuer      = pflag.String("client-jwt-issuer", "", "The expected issuer URL for client JWTs.")
 	clientJWTAudience    = pflag.String("client-jwt-audience", "", "The expected audience for client JWTs.")
@@ -168,13 +169,26 @@ func main() {
 		serverboot.Fatal(ctx, "Failed to register worker-count metric", err)
 	}
 
-	ateletDialer := controlapi.NewAteletDialer(workerPodInformer.GetIndexer(), ateletPodInformer.GetIndexer(), *ateletClientCredBundle, *podIdentityCACerts)
-	sm := controlapi.NewService(persistence, workerCache, actorTemplateLister, workerPoolLister, sandboxConfigLister, ateletDialer, clientset)
+	var dialer controlapi.WorkerRuntimeDialer
+	if *ateletSimulatorAddress == "" {
+		dialer = controlapi.NewAteletDialer(
+			workerPodInformer.GetIndexer(),
+			ateletPodInformer.GetIndexer(),
+			*ateletClientCredBundle,
+			*podIdentityCACerts,
+		)
+	} else {
+		dialer, err = controlapi.NewStaticAteletDialer(*ateletSimulatorAddress)
+		if err != nil {
+			serverboot.Fatal(ctx, "Failed to configure atelet simulator dialer", err)
+		}
+	}
+	sm := controlapi.NewService(persistence, workerCache, actorTemplateLister, workerPoolLister, sandboxConfigLister, dialer, clientset)
 
 	jwtIssuerDiscoveryClient := buildK8sServiceAccountIssuerDiscoveryClient(ctx, *clientJWTCAFile, *clientJWTIssuer)
 
 	sessionIdentitySrv := sessionidentity.New(*clientJWTIssuer, *clientJWTAudience, *sessionIDJWTPoolFile, *sessionIDCAPoolFile, *podIdentityCACerts, jwtIssuerDiscoveryClient)
-	debugSrv := debugapi.NewService(persistence)
+	debugSrv := debugapi.NewService(persistence, workerCache)
 
 	lisCfg := &net.ListenConfig{}
 	lis, err := lisCfg.Listen(ctx, "tcp", *listenAddr)
@@ -269,6 +283,7 @@ func loadFlagsFromEnv() {
 		{redisClientCert, "ATE_API_REDIS_CLIENT_CERT"},
 		{storeBackend, "ATE_API_STORE_BACKEND"},
 		{postgresConnectionString, "ATE_API_POSTGRES_CONNECTION_STRING"},
+		{ateletSimulatorAddress, "ATE_API_ATELET_SIMULATOR_ADDRESS"},
 	}
 	for _, o := range overrides {
 		if *o.flag == "@env" {

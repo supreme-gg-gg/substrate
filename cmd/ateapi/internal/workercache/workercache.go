@@ -35,9 +35,6 @@ import (
 const relistPageSize = 1000
 
 // Cache maintains an in-memory snapshot of all workers.
-//
-// TODO: add metrics — at minimum a gauge for worker count, a counter for
-// resync events, and a counter for failed PUBLISH operations (in ateredis).
 type Cache struct {
 	store          store.Interface
 	relistInterval time.Duration
@@ -87,6 +84,17 @@ func (c *Cache) Workers() ([]*ateapipb.Worker, error) {
 		out = append(out, w)
 	}
 	return out, nil
+}
+
+// Refresh replaces the in-memory worker snapshot with the current store
+// contents. It is used by development/debug setup after an out-of-band store
+// reset, which cannot emit one deletion event per worker.
+func (c *Cache) Refresh(ctx context.Context) error {
+	if err := c.relist(ctx); err != nil {
+		return err
+	}
+	c.ready.Store(true)
+	return nil
 }
 
 func (c *Cache) sync(ctx context.Context) (*store.WorkerWatch, error) {

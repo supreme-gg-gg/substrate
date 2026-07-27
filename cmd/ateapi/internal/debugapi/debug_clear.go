@@ -28,6 +28,11 @@ func (s *Service) DebugClear(ctx context.Context, req *ateapipb.DebugClearReques
 	if err := s.persistence.DebugClearAll(ctx); err != nil {
 		return nil, fmt.Errorf("while running DebugClearAll: %w", err)
 	}
+	if s.workerCache != nil {
+		if err := s.workerCache.Refresh(ctx); err != nil {
+			return nil, fmt.Errorf("while refreshing worker cache: %w", err)
+		}
+	}
 	return &ateapipb.DebugClearResponse{}, nil
 }
 

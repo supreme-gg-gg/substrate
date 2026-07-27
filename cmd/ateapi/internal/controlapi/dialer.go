@@ -29,6 +29,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/lru"
@@ -44,6 +45,13 @@ const (
 	ateletSA        = "atelet"
 )
 
+// WorkerRuntimeDialer resolves the atelet endpoint responsible for a worker.
+// The production implementation uses Kubernetes Pod informers. Benchmarks may
+// supply a static implementation backed by an atelet simulator.
+type WorkerRuntimeDialer interface {
+	DialForWorker(workerPodNamespace, workerPodName string) (*grpc.ClientConn, error)
+}
+
 // AteletDialer handles gRPC connections to Atelet pods.
 type AteletDialer struct {
 	workerIndexer cache.Indexer
@@ -54,6 +62,8 @@ type AteletDialer struct {
 	// per-atelet mTLS; tests can override it with insecure credentials.
 	dialCredentials func(expectedPodUID string) (credentials.TransportCredentials, error)
 }
+
+var _ WorkerRuntimeDialer = (*AteletDialer)(nil)
 
 // NewAteletDialer creates a new AteletDialer. clientBundlePath and serverCAPath
 // are used to build the per-atelet mTLS credentials used for every atelet connection.
@@ -199,4 +209,31 @@ func verifyAteletServerCert(bundle *x509bundle.Bundle, expectedID spiffeid.ID, e
 
 		return nil
 	}, nil
+}
+
+// StaticAteletDialer routes every synthetic worker to one shared atelet
+// endpoint. It is intended only for storage-focused lifecycle benchmarks.
+type StaticAteletDialer struct {
+	conn *grpc.ClientConn
+}
+
+var _ WorkerRuntimeDialer = (*StaticAteletDialer)(nil)
+
+// NewStaticAteletDialer creates a dialer that ignores worker Pod identity and
+// sends every call to address.
+func NewStaticAteletDialer(address string) (*StaticAteletDialer, error) {
+	conn, err := grpc.NewClient(
+		address,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("while creating static atelet gRPC client connection: %w", err)
+	}
+	return &StaticAteletDialer{conn: conn}, nil
+}
+
+// DialForWorker returns the shared simulator connection.
+func (d *StaticAteletDialer) DialForWorker(_, _ string) (*grpc.ClientConn, error) {
+	return d.conn, nil
 }

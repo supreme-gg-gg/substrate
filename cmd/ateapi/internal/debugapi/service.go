@@ -16,6 +16,7 @@ package debugapi
 
 import (
 	"github.com/agent-substrate/substrate/cmd/ateapi/internal/store"
+	"github.com/agent-substrate/substrate/cmd/ateapi/internal/workercache"
 	"github.com/agent-substrate/substrate/pkg/proto/ateapipb"
 )
 
@@ -23,13 +24,15 @@ import (
 type Service struct {
 	ateapipb.UnimplementedDebugServer
 	persistence store.Interface
+	workerCache *workercache.Cache
 }
 
 var _ ateapipb.DebugServer = (*Service)(nil)
 
 // NewService creates a new debug service.
-func NewService(persistence store.Interface) *Service {
+func NewService(persistence store.Interface, workerCache *workercache.Cache) *Service {
 	return &Service{
 		persistence: persistence,
+		workerCache: workerCache,
 	}
 }
