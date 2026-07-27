@@ -19,6 +19,29 @@ backend. `ateapi` chooses the implementation once at startup:
 The PostgreSQL implementation uses `pgxpool` directly. It does not introduce
 an ORM or a second public storage abstraction.
 
+## Shared store contract
+
+The contract is defined in `cmd/ateapi/internal/store/store.go`. Both backends
+implement the following behavior:
+
+| Resource | Operations | Contract details |
+|---|---|---|
+| Atespace | create, get, exists, list, delete | Create returns the stored resource with server-assigned metadata. Delete only succeeds for an empty atespace and returns the deleted resource. |
+| Actor | create, get, update, list, delete | Create and update return the stored resource without mutating the input. Updates use an expected version. Delete only accepts suspended or crashed actors and returns the deleted resource. An empty atespace argument to `ListActors` means all atespaces. |
+| Worker | create, get, update, list, delete, watch | Updates use an expected version. Delete is idempotent. Watches deliver create, update, and delete events until closed, cancelled, or disconnected. |
+| Workflow lock | acquire | `AcquireLock` returns an automatically renewed `store.Lock`. Its context is cancelled if the lease is lost, and `Close` stops renewal and releases the lease. |
+| Debug data | clear all | `DebugClearAll` removes resource and lock data for local testing and debugging. |
+
+All list methods take a page size and opaque page token and return a page plus
+the next token. Callers must not interpret tokens or transfer them between
+backends. The shared sentinel errors are:
+
+- `store.ErrNotFound` for a missing resource;
+- `store.ErrAlreadyExists` for a create conflict;
+- `store.ErrPersistenceRetry` for an optimistic-concurrency conflict;
+- `store.ErrFailedPrecondition` when resource state prevents an operation; and
+- `store.ErrLockConflict` when another client owns a workflow lock.
+
 ## Data model
 
 The backend creates four tables using an embedded, idempotent schema:
@@ -38,29 +61,38 @@ Resource tables store:
 
 This keeps protobufs as the source of truth while allowing PostgreSQL to
 enforce integrity and perform indexed updates and listing. Writes clone input
-messages before assigning metadata or versions.
+messages before assigning metadata or versions, matching `ateredis`. Redis
+stores its resource protobufs as protojson; PostgreSQL stores the binary
+encoding.
 
 Actors have a foreign key to their atespace with `ON DELETE RESTRICT`.
 Consequently, creating an actor in a missing atespace and deleting a non-empty
 atespace are rejected by the database even when they race with an earlier API
-existence check.
+existence check. `ateredis` performs separate existence/emptiness checks, so it
+cannot enforce those two relationships atomically.
 
 ## Reads, writes, and concurrency
 
-Creates use `INSERT`; PostgreSQL constraint errors are mapped to the existing
-store sentinel errors.
+Creates use `INSERT`. Actor and atespace creates assign UID, version 1, and
+create/update timestamps and return the persisted clone; worker creation
+assigns version 1 and retains the interface's error-only return. PostgreSQL
+constraint errors are mapped to the shared store sentinel errors. In
+particular, an actor whose atespace is missing returns
+`store.ErrFailedPrecondition`.
 
 Actor and worker updates use one conditional `UPDATE ... RETURNING` statement.
 The predicate includes the expected version and immutable fields. A successful
-update increments the version. If no row matches, a point read distinguishes:
+actor update returns the persisted clone; worker updates retain the interface's
+error-only return. If no row matches, a point read distinguishes:
 
 - a missing resource;
 - a stale version, returned as `store.ErrPersistenceRetry`; or
 - an attempted change to an immutable field.
 
-Actor deletion includes the allowed suspended/crashed statuses in the `DELETE`
-predicate. Atespace deletion relies on the actor foreign key. Worker deletion
-is idempotent.
+Actor deletion includes the allowed suspended/crashed statuses in the
+`DELETE ... RETURNING` predicate. Atespace deletion uses
+`DELETE ... RETURNING` and relies on the actor foreign key. Both operations
+return the deleted protobuf. Worker deletion is idempotent.
 
 Actor-to-worker assignment still follows the existing workflow and updates the
 two resources separately. The PostgreSQL backend intentionally does not change
@@ -78,29 +110,49 @@ whether a next page exists:
 
 Opaque base64-encoded tokens contain a format version, resource kind, list
 scope, and the last key. Tokens are rejected when reused with another resource
-or atespace. Unlike Redis cursor tokens, they contain no shard topology.
+or atespace.
+
+This differs from `ateredis`, which uses `SCAN` across sorted Redis masters.
+Its token contains a shard hash and cursor, its result order is not a resource
+ordering guarantee, and a topology change can invalidate the token.
+PostgreSQL tokens contain no shard topology and provide a stable key order,
+but, like Redis `SCAN`, keyset pagination is not a snapshot: concurrent writes
+can affect later pages.
 
 ## Worker notifications
 
 Worker creates, updates, and deletes publish events through PostgreSQL
 `LISTEN`/`NOTIFY`. The row mutation and `pg_notify` call share a transaction,
 so a notification is delivered only after the corresponding write commits.
+If event serialization, notification, or commit fails, the resource mutation
+also fails. By contrast, `ateredis` publishes after its resource mutation and
+logs publish failures, so the write can succeed without a notification.
 
 `WatchWorkers` holds a dedicated PostgreSQL connection and forwards decoded
-events to the existing worker-watch channel. Notifications remain best effort:
-if the connection is lost, the watch closes and the worker cache reconnects
-and performs a full relist, as it does with Redis.
+events through `store.WorkerWatch.Events`. Calling `Close`, cancelling the
+parent context, or losing the connection closes the event channel. The worker
+cache treats closure as a signal to re-subscribe and performs a full relist, as
+it does with Redis. Notifications remain best effort and are not replayed.
 
 The payload is a compact JSON envelope containing the protojson worker and must
-fit PostgreSQL's approximately 8 KiB notification limit. Oversized events fail
-the write instead of silently skipping the notification.
+fit the backend's 8,000-byte limit for PostgreSQL notifications. Oversized
+events fail and roll back the write instead of silently skipping the
+notification.
 
 ## Workflow locks
 
-The `leases` table preserves the existing token-and-TTL lock contract.
-Acquisition is a conditional upsert that inserts a lease or atomically replaces
-an expired lease using PostgreSQL's clock. Release deletes only when both the
-key and owner token match.
+The `leases` table implements the same automatically renewed lock contract as
+`ateredis`. Acquisition is a conditional upsert that inserts a lease or
+atomically replaces an expired lease using PostgreSQL's clock. A held lease is
+renewed periodically only if its key, owner token, and unexpired state still
+match. Transient renewal errors are retried within the renewal deadline. If
+renewal cannot preserve ownership, `Lock.Context()` is cancelled so the
+workflow can stop relying on exclusive access.
+
+`Lock.Close()` is idempotent: it stops the renewal goroutine and deletes the row
+only when both key and owner token match. A bounded background context is used
+for release so cancellation of the acquiring request does not prevent cleanup;
+if release fails, expiry eventually makes the lease reclaimable.
 
 This deliberately uses rows rather than advisory locks because lease expiry
 must not depend on the lifetime of a client connection.
@@ -153,6 +205,10 @@ PostgreSQL deployment design. In particular:
 
 ## Code map
 
+- `cmd/ateapi/internal/store/store.go`: backend-neutral interface, events,
+  watches, locks, and sentinel errors.
+- `cmd/ateapi/internal/store/ateredis/ateredis.go`: default Redis
+  implementation whose contract `atepg` follows.
 - `cmd/ateapi/internal/store/atepg/atepg.go`: store operations, notifications,
   and leases.
 - `cmd/ateapi/internal/store/atepg/schema.go`: embedded schema.

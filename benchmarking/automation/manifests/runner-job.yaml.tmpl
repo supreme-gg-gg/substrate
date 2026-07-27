@@ -44,18 +44,6 @@ spec:
     spec:
       restartPolicy: Never
       serviceAccountName: benchmark-runner
-      # Keep the one-process headless load generator off ateapi's node. At
-      # zero wait time both can be CPU-heavy, and co-location distorts the
-      # backend capacity comparison.
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchLabels:
-                app: ate-api-server
-            namespaces:
-            - ate-system
-            topologyKey: kubernetes.io/hostname
       containers:
       - name: runner
         image: ${IMAGE}
