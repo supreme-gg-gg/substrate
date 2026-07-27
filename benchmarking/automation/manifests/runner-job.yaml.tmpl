@@ -59,7 +59,7 @@ spec:
       containers:
       - name: runner
         image: ${IMAGE}
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         command:
         - "python3"
         - "/app/runner.py"

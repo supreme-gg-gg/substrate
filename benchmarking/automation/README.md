@@ -120,7 +120,7 @@ gcloud projects add-iam-policy-binding <TEST_PROJECT_ID> \
 ```
 
 **Runner Job pod** (KSA `benchmark-runner` in namespace `benchmarking` on the
-test cluster's project) needs `roles/storage.objectUser` on the destination
+test cluster's project) needs `roles/storage.objectCreator` on the destination
 bucket so `runner.py` can upload results:
 
 ```bash
@@ -195,7 +195,7 @@ Against an already-deployed cluster, run it with:
 # Rebuild/redeploy once so the in-pod runner includes Aggregated RPS output.
 ./benchmarking/deploy_locust.sh --deploy
 
-python3 benchmarking/automation/run_local.py \
+python3 benchmarking/automation/run.py \
   --tests benchmarking/automation/tests-capacity.yaml \
   --out ./bench-results-capacity
 ```
@@ -243,7 +243,7 @@ matrix against an already-deployed cluster:
 ```bash
 ./benchmarking/deploy_locust.sh --deploy
 
-python3 benchmarking/automation/run_local.py \
+python3 benchmarking/automation/run.py \
   --tests benchmarking/automation/tests-worker-contention.yaml \
   --out ./bench-results-worker-contention
 ```
@@ -269,11 +269,11 @@ backends.
 
 ### Run both matrices with only one backend switch
 
-`run_local.py` accepts multiple `--tests` files and a backend filter. Run all
+`run.py` accepts multiple `--tests` files and a backend filter. Run all
 Redis capacity and worker cases together:
 
 ```bash
-python3 benchmarking/automation/run_local.py \
+python3 benchmarking/automation/run.py \
   --tests benchmarking/automation/tests-capacity.yaml \
   --tests benchmarking/automation/tests-worker-contention.yaml \
   --backend redis \
@@ -283,7 +283,7 @@ python3 benchmarking/automation/run_local.py \
 Then switch once and run all PostgreSQL cases together:
 
 ```bash
-python3 benchmarking/automation/run_local.py \
+python3 benchmarking/automation/run.py \
   --tests benchmarking/automation/tests-capacity.yaml \
   --tests benchmarking/automation/tests-worker-contention.yaml \
   --backend postgres \
@@ -295,34 +295,33 @@ configured for that backend, add `--reuse-current-backend` to skip even the
 initial rollout restart. Only use that option when the selected backend is
 known to be ready; the runner cannot infer ateapi's current store safely.
 
-Note: this only captures throughput, per-RPC latency (p50/p95/p99), and
-error/failure counts — nothing in the repo currently scrapes container-level
-CPU/memory/network/storage I/O for `ateapi` or the database, which the doc's
-benchmark plan also calls for. Adding that would mean extending
-`manifests/ate-install/kind/prometheus.yaml` (or the GKE equivalent) to
-scrape cAdvisor and querying Prometheus for those metrics after each run —
-left as follow-up. `valkey.yaml` and `postgres.yaml` do now set CPU/memory
-requests+limits (previously unset on both), so at least resource
-*allocation* is fixed and comparable per the doc's requirement to record it
-— actual usage still needs to be read manually (`kubectl top pod -n
-ate-system`) until that scraping exists.
-
 ## Running without the CronJob/orchestration cluster
 
-If you already have substrate + locust deployed on your current kubectl
-context (e.g. a personal GKE dev cluster), you don't need the CronJob,
-the separate orchestration cluster, or a fresh image build to run
-`tests.yaml` — `run_local.py` drives the same `tests.yaml`, but runs
-`runner.py` via `kubectl exec` in the existing `locust` Deployment instead
-of submitting a Kubernetes Job per test. That sidesteps the GCS bucket +
-Workload Identity binding the Job-based `--dest` normally needs (see "IAM
-prerequisites" above) — results just land in the pod's
-`/tmp/bench-results`, which `run_local.py` copies out for you at the end:
+If you already have substrate deployed on your current kubectl context (e.g.
+a personal GKE dev cluster), you don't need the CronJob or a separate
+orchestration cluster. `run.py` can submit the same per-test Kubernetes
+Jobs used by scheduled automation:
 
 ```bash
-python3 benchmarking/automation/run_local.py                       # every test in tests.yaml
-python3 benchmarking/automation/run_local.py --only storage_mixed_crud  # substring filter, matches both backend twins
+python3 benchmarking/automation/run.py \
+  --execution job \
+  --image <runner-image> \
+  --dest gs://<bucket>/<prefix>
 ```
+
+For development without a GCS bucket or Workload Identity binding, the
+isolated-Pod mode copies results to local disk before deleting each Pod:
+
+```bash
+python3 benchmarking/automation/run.py \
+  --execution pod \
+  --image <runner-image> \
+  --out ./bench-results
+```
+
+If `--image` is omitted, `run.py` discovers it from the existing
+`locust-master` Deployment. That Deployment does not participate in either
+execution mode.
 
 It's deliberately cheap between tests: workloads are reused while their worker
 count is unchanged, tests with `deployWorkloads: false` skip them entirely, and

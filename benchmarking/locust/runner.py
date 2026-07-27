@@ -43,7 +43,10 @@ from common.boomer_config import build_config_json
 
 # Path inside the locust image to the boomer-glutton binary baked in by
 # benchmarking/locust/Dockerfile.
-BOOMER_BINARY = "/app/boomer-glutton"
+BOOMER_BINARIES = {
+    "glutton.py": "/app/boomer-glutton",
+    "lifecycle_scale.py": "/app/boomer-lifecycle-scale",
+}
 
 # Tab-separated columns written to traces.txt. Order matters — readers split
 # on \t and index positionally.
@@ -88,6 +91,23 @@ def parse_args() -> argparse.Namespace:
         help="Number of actors to create in the benchmark atespace before running "
         "the test (e.g. for list-load-at-scale cases).",
     )
+    p.add_argument(
+        "--scale-actors",
+        type=int,
+        default=0,
+        help="Seed this many deterministic lifecycle-scale actors before the run.",
+    )
+    p.add_argument(
+        "--scale-workers",
+        type=int,
+        default=0,
+        help="Seed this many synthetic lifecycle-scale workers before the run.",
+    )
+    p.add_argument(
+        "--verify-scale",
+        action="store_true",
+        help="Verify lifecycle-scale actor/worker invariants after the run.",
+    )
     args, extra = p.parse_known_args()
     args.locust_extra = extra
     return args
@@ -96,7 +116,34 @@ def parse_args() -> argparse.Namespace:
 def needs_boomer(test_file: str) -> bool:
     """Return True if the test file is the glutton stub; the real GluttonUser
     implementation lives in the boomer-glutton binary."""
-    return os.path.basename(test_file) == "glutton.py"
+    return os.path.basename(test_file) in BOOMER_BINARIES
+
+
+def boomer_binary(test_file: str) -> str:
+    return BOOMER_BINARIES[os.path.basename(test_file)]
+
+
+def lifecycle_scale_boomer_args(
+    argv: list[str], actor_count: int
+) -> list[str]:
+    """Extract lifecycle-scale flags that belong to the Go worker."""
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--lifecycle-mode",
+        choices=("sufficient", "oversubscribed"),
+        default="sufficient",
+    )
+    parser.add_argument("--worker-hold-time", type=float, default=0.25)
+    parser.add_argument("--hot-resumes", type=int, default=1)
+    parser.add_argument("--lifecycle-cycle-rate", type=float, default=0)
+    parsed, _ = parser.parse_known_args(argv)
+    return [
+        "--mode", parsed.lifecycle_mode,
+        "--actor-count", str(actor_count),
+        "--worker-hold-time", f"{parsed.worker_hold_time}s",
+        "--hot-resumes", str(parsed.hot_resumes),
+        "--lifecycle-cycle-rate", str(parsed.lifecycle_cycle_rate),
+    ]
 
 
 def tee(logs: TextIO, msg: str) -> None:
@@ -118,6 +165,9 @@ def log_run_config(args: argparse.Namespace, dest_prefix: str, work_dir: Path, l
         f"  users:          {args.users}",
         f"  reset_before:   {args.reset_before}",
         f"  preload:        {args.preload}",
+        f"  scale_actors:   {args.scale_actors}",
+        f"  scale_workers:  {args.scale_workers}",
+        f"  verify_scale:   {args.verify_scale}",
         f"  uses_boomer:    {needs_boomer(args.file)}",
         f"  dest_prefix:    {dest_prefix}",
         f"  work_dir:       {work_dir}",
@@ -190,7 +240,6 @@ def run_test(args: argparse.Namespace, csv_prefix: Path, logs: TextIO, traces: T
     siphoned into traces.txt as a deduped one-per-line list.
     """
     with_boomer = needs_boomer(args.file)
-
     locust_cmd = [
         sys.executable, "-m", "locust",
         "--headless",
@@ -223,10 +272,14 @@ def run_test(args: argparse.Namespace, csv_prefix: Path, logs: TextIO, traces: T
 
     boomer_proc = None
     if with_boomer:
-        boomer_cmd = [BOOMER_BINARY]
+        boomer_cmd = [boomer_binary(args.file)]
         cfg_json = build_config_json(args.locust_extra)
         if cfg_json:
             boomer_cmd += ["--config-json", cfg_json]
+        if os.path.basename(args.file) == "lifecycle_scale.py":
+            boomer_cmd += lifecycle_scale_boomer_args(
+                args.locust_extra, args.scale_actors
+            )
         tee(logs, f"Running: {' '.join(boomer_cmd)}")
         boomer_proc = subprocess.Popen(
             boomer_cmd,
@@ -324,8 +377,15 @@ def prepare_dataset(args: argparse.Namespace, logs: TextIO) -> None:
     """Reset and/or preload store state before the timed run, per --reset-before
     / --preload. Raises on failure: a stale or partial dataset would silently
     invalidate the run's results, so we fail loudly instead of running anyway."""
-    if not args.reset_before and args.preload <= 0:
+    if (
+        not args.reset_before
+        and args.preload <= 0
+        and args.scale_actors <= 0
+        and args.scale_workers <= 0
+    ):
         return
+    if (args.scale_actors > 0) != (args.scale_workers > 0):
+        raise ValueError("--scale-actors and --scale-workers must be used together")
     channel, control_stub, debug_stub = dbadmin.build_stubs()
     try:
         if args.reset_before:
@@ -336,6 +396,19 @@ def prepare_dataset(args: argparse.Namespace, logs: TextIO) -> None:
             start = time.time()
             dbadmin.preload_actors(control_stub, count=args.preload)
             tee(logs, f"Preload complete in {time.time() - start:.1f}s")
+        if args.scale_actors > 0:
+            tee(
+                logs,
+                f"Seeding {args.scale_actors} lifecycle-scale actors and "
+                f"{args.scale_workers} synthetic workers...",
+            )
+            start = time.time()
+            dbadmin.seed_scale(
+                debug_stub,
+                actor_count=args.scale_actors,
+                worker_count=args.scale_workers,
+            )
+            tee(logs, f"Scale seed complete in {time.time() - start:.1f}s")
     finally:
         channel.close()
 
@@ -371,6 +444,29 @@ def main() -> None:
         log_run_config(args, prefix, work_dir, logs)
         prepare_dataset(args, logs)
         exit_code = run_test(args, csv_prefix, logs, traces)
+        if args.verify_scale:
+            try:
+                channel, _, debug_stub = dbadmin.build_stubs()
+                try:
+                    verified = dbadmin.verify_scale(
+                        debug_stub,
+                        actor_count=args.scale_actors,
+                        worker_count=args.scale_workers,
+                    )
+                finally:
+                    channel.close()
+                tee(
+                    logs,
+                    "Scale verification passed: "
+                    f"actors={verified.actor_count}, workers={verified.worker_count}, "
+                    f"suspended={verified.suspended_actor_count}, "
+                    f"running={verified.running_actor_count}, "
+                    f"transitional={verified.transitional_actor_count}, "
+                    f"assigned_workers={verified.assigned_worker_count}",
+                )
+            except Exception as e:
+                tee(logs, f"Scale verification failed: {e}")
+                exit_code = exit_code or 1
 
         stats_generated = False
         if stats_csv.exists():

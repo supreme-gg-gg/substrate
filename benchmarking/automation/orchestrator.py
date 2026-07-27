@@ -272,7 +272,11 @@ def wait_for_job(name: str, timeout_seconds: int) -> str:
     return "timeout"
 
 
-def switch_store_backend(store_backend: str = "redis", postgres_connection_string: str = "") -> None:
+def switch_store_backend(
+    store_backend: str = "redis",
+    postgres_connection_string: str = "",
+    atelet_simulator_address: str = "",
+) -> None:
     """Point an already-deployed ate-api-server at a different store backend,
     without touching the rest of substrate (CRDs, atenet, atelet, valkey).
     Used directly by run_local.py, which assumes substrate is already up;
@@ -288,6 +292,7 @@ def switch_store_backend(store_backend: str = "redis", postgres_connection_strin
     env = os.environ.copy()
     env["ATE_API_STORE_BACKEND"] = store_backend
     env["ATE_API_POSTGRES_CONNECTION_STRING"] = postgres_connection_string
+    env["ATE_API_ATELET_SIMULATOR_ADDRESS"] = atelet_simulator_address
     run(["hack/install-ate.sh", "--create-api-server-env-vars"], env=env)
 
     # Recreating the ConfigMap alone doesn't restart already-running pods.
@@ -295,8 +300,14 @@ def switch_store_backend(store_backend: str = "redis", postgres_connection_strin
     run(["kubectl", "rollout", "status", "deployment/ate-api-server", "-n", "ate-system", "--timeout=120s"])
 
 
-def deploy_substrate(store_backend: str = "redis", postgres_connection_string: str = "") -> None:
-    switch_store_backend(store_backend, postgres_connection_string)
+def deploy_substrate(
+    store_backend: str = "redis",
+    postgres_connection_string: str = "",
+    atelet_simulator_address: str = "",
+) -> None:
+    switch_store_backend(
+        store_backend, postgres_connection_string, atelet_simulator_address
+    )
     run(["hack/install-ate.sh", "--deploy-ate-system"])
 
 
@@ -332,7 +343,27 @@ def teardown_workloads() -> None:
     run_no_check(["benchmarking/workloads/deploy.sh", "--delete"])
 
 
-def run_test(test: dict[str, Any], image: str, dest: str, commit: str) -> str:
+def deploy_lifecycle_scale() -> None:
+    run(["benchmarking/lifecycle-scale/deploy.sh", "--deploy"])
+
+
+def restart_lifecycle_scale_simulator() -> None:
+    """Clear simulator-only assignments before resetting and reseeding the store."""
+    run(["kubectl", "rollout", "restart", "deployment/atelet-simulator", "-n", "ate-system"])
+    run(["kubectl", "rollout", "status", "deployment/atelet-simulator", "-n", "ate-system", "--timeout=120s"])
+
+
+def teardown_lifecycle_scale() -> None:
+    run_no_check(["benchmarking/lifecycle-scale/deploy.sh", "--delete"])
+
+
+def run_test(
+    test: dict[str, Any],
+    image: str,
+    dest: str,
+    commit: str,
+    runner_job_template: str = RUNNER_JOB_TMPL,
+) -> str:
     name = test["name"]
     job_name = f"runner-{sanitize(name)}-{commit[:7]}-{uuid.uuid4().hex[:6]}"
     subs = {
@@ -345,7 +376,9 @@ def run_test(test: dict[str, Any], image: str, dest: str, commit: str) -> str:
         "NAME": name,
         "DEST": dest,
     }
-    manifest = render_template(RUNNER_JOB_TMPL, subs, test.get("flags", []))
+    manifest = render_template(
+        runner_job_template, subs, test.get("flags", [])
+    )
     wait_for_no_active_runners()
     print(f"Submitting Job {job_name}", flush=True)
     subprocess.run(
@@ -427,6 +460,7 @@ def main() -> None:
             # into this run. Both teardowns use --ignore-not-found, so
             # this is cheap on a clean cluster.
             teardown_workloads()
+            teardown_lifecycle_scale()
             teardown_substrate()
 
             repeat = test.get("repeat", 1)
@@ -434,13 +468,18 @@ def main() -> None:
                 deploy_substrate(
                     test.get("storeBackend", "redis"),
                     test.get("postgresConnectionString", ""),
+                    test.get("ateletSimulatorAddress", ""),
                 )
+                if test.get("deployLifecycleScale", False):
+                    deploy_lifecycle_scale()
                 if test.get("deployWorkloads", True):
                     deploy_workloads(test.get("workerCount", 1))
                 for rep in range(repeat):
                     label = test["name"] if repeat == 1 else f"{test['name']} (rep {rep + 1}/{repeat})"
                     status = "error"
                     try:
+                        if test.get("deployLifecycleScale", False):
+                            restart_lifecycle_scale_simulator()
                         status = run_test(test, locust_image, args.dest, commit)
                     except Exception as e:
                         print(f"Test {label} crashed: {e}", flush=True)
@@ -452,6 +491,7 @@ def main() -> None:
                 # Always tear down, even if deploy or run failed, so the
                 # next test (and the next CronJob fire) starts clean.
                 teardown_workloads()
+                teardown_lifecycle_scale()
                 teardown_substrate()
         finally:
             # Drop .ate-dev-env.sh so the next test cannot accidentally

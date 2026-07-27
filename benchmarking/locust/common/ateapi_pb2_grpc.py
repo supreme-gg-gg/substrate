@@ -659,6 +659,16 @@ class DebugStub:
                 request_serializer=ateapi__pb2.DebugClearRequest.SerializeToString,
                 response_deserializer=ateapi__pb2.DebugClearResponse.FromString,
                 _registered_method=True)
+        self.DebugSeedScale = channel.unary_unary(
+                '/ateapi.Debug/DebugSeedScale',
+                request_serializer=ateapi__pb2.DebugSeedScaleRequest.SerializeToString,
+                response_deserializer=ateapi__pb2.DebugSeedScaleResponse.FromString,
+                _registered_method=True)
+        self.DebugVerifyScale = channel.unary_unary(
+                '/ateapi.Debug/DebugVerifyScale',
+                request_serializer=ateapi__pb2.DebugVerifyScaleRequest.SerializeToString,
+                response_deserializer=ateapi__pb2.DebugVerifyScaleResponse.FromString,
+                _registered_method=True)
 
 
 class DebugServicer:
@@ -673,6 +683,21 @@ class DebugServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def DebugSeedScale(self, request, context):
+        """Benchmark setup: create a deterministic actor population and synthetic
+        workers without creating Kubernetes worker Pods.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DebugVerifyScale(self, request, context):
+        """Benchmark verification: check actor/worker assignment consistency.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DebugServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -680,6 +705,16 @@ def add_DebugServicer_to_server(servicer, server):
                     servicer.DebugClear,
                     request_deserializer=ateapi__pb2.DebugClearRequest.FromString,
                     response_serializer=ateapi__pb2.DebugClearResponse.SerializeToString,
+            ),
+            'DebugSeedScale': grpc.unary_unary_rpc_method_handler(
+                    servicer.DebugSeedScale,
+                    request_deserializer=ateapi__pb2.DebugSeedScaleRequest.FromString,
+                    response_serializer=ateapi__pb2.DebugSeedScaleResponse.SerializeToString,
+            ),
+            'DebugVerifyScale': grpc.unary_unary_rpc_method_handler(
+                    servicer.DebugVerifyScale,
+                    request_deserializer=ateapi__pb2.DebugVerifyScaleRequest.FromString,
+                    response_serializer=ateapi__pb2.DebugVerifyScaleResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -711,6 +746,60 @@ class Debug:
             '/ateapi.Debug/DebugClear',
             ateapi__pb2.DebugClearRequest.SerializeToString,
             ateapi__pb2.DebugClearResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DebugSeedScale(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ateapi.Debug/DebugSeedScale',
+            ateapi__pb2.DebugSeedScaleRequest.SerializeToString,
+            ateapi__pb2.DebugSeedScaleResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DebugVerifyScale(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ateapi.Debug/DebugVerifyScale',
+            ateapi__pb2.DebugVerifyScaleRequest.SerializeToString,
+            ateapi__pb2.DebugVerifyScaleResponse.FromString,
             options,
             channel_credentials,
             insecure,

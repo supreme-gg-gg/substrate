@@ -1,0 +1,100 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: benchmark-workloads
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atelet-simulator
+  namespace: ate-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: atelet-simulator
+  template:
+    metadata:
+      labels:
+        app: atelet-simulator
+    spec:
+      containers:
+      - name: simulator
+        image: ko://github.com/agent-substrate/substrate/cmd/benchmarking/atelet-simulator
+        args:
+        - --delay=1ms
+        ports:
+        - name: grpc
+          containerPort: 8085
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "1000m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: atelet-simulator
+  namespace: ate-system
+spec:
+  selector:
+    app: atelet-simulator
+  ports:
+  - name: grpc
+    port: 8085
+    targetPort: grpc
+---
+# ActorTemplate readiness creates a golden snapshot by resuming one actor.
+# Synthetic scale workers are seeded later, so deploy.sh temporarily starts
+# one real worker and scales it to zero once the template is Ready. The
+# WorkerPool object remains because ResumeActor resolves sandbox configuration
+# from it before calling the simulator.
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: lifecycle-scale
+  namespace: benchmark-workloads
+  labels:
+    workload: lifecycle-scale
+spec:
+  replicas: 1
+  ateomImage: ko://github.com/agent-substrate/substrate/cmd/ateom-gvisor
+  template:
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+---
+apiVersion: ate.dev/v1alpha1
+kind: ActorTemplate
+metadata:
+  name: lifecycle-scale
+  namespace: benchmark-workloads
+spec:
+  pauseImage: "gcr.io/gke-release/pause@sha256:bcbd57ba5653580ec647b16d8163cdd1112df3609129b01f912a8032e48265da"
+  containers:
+  - name: synthetic
+    image: busybox@sha256:1487d0af5f52b4ba31c7e465126ee2123fe3f2305d638e7827681e7cf6c83d5e
+    command: ["/bin/sleep", "1000000"]
+  workerSelector:
+    matchLabels:
+      workload: lifecycle-scale
+  snapshotsConfig:
+    location: gs://synthetic-lifecycle-scale/snapshots/

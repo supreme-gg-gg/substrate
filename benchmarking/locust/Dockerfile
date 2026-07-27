@@ -32,6 +32,7 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY pkg ./pkg
 RUN CGO_ENABLED=0 GOFLAGS=-mod=vendor go build -o /out/boomer-glutton ./cmd/benchmarking/boomer-glutton
+RUN CGO_ENABLED=0 GOFLAGS=-mod=vendor go build -o /out/boomer-lifecycle-scale ./cmd/benchmarking/boomer-lifecycle-scale
 
 # Stage 3: Distroless runner. Carries the locust install AND the boomer
 # binary; the manifest decides which to launch via the `args` field.
@@ -39,6 +40,7 @@ FROM gcr.io/distroless/python3-debian12
 WORKDIR /app
 COPY --from=pydeps /app/deps /app/deps
 COPY --from=goboomer /out/boomer-glutton /app/boomer-glutton
+COPY --from=goboomer /out/boomer-lifecycle-scale /app/boomer-lifecycle-scale
 COPY benchmarking/locust/common/ /app/common/
 COPY benchmarking/locust/shapes/ /app/shapes/
 COPY benchmarking/locust/tests/ /app/tests/
